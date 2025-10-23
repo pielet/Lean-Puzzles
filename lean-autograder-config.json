@@ -1,0 +1,26 @@
+[
+  {
+    "submission": "00-LeanInduction.lean",
+    "template": "00-Template.lean"
+  },
+  {
+    "submission": "01-Expressions.lean",
+    "template": "01-Template.lean"
+  },
+  {
+    "submission": "02-Let.lean",
+    "template": "02-Template.lean"
+  },
+  {
+    "submission": "03-FH.lean",
+    "template": "03-Template.lean"
+  },
+  {
+    "submission": "04-Types.lean",
+    "template": "04-Template.lean"
+  }, 
+  {
+    "submission": "05-STLC.lean",
+    "template": "05-Template.lean"
+  }
+]

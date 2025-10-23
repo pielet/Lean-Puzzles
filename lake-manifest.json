@@ -1,0 +1,15 @@
+{"version": "1.1.0",
+ "packagesDir": ".lake/packages",
+ "packages":
+ [{"url": "https://github.com/rkthomps/lean4-autograder-main",
+   "type": "git",
+   "subDir": null,
+   "scope": "",
+   "rev": "75ea05a7dfa0fe56f6855c2dfe9e3e4ba21104ca",
+   "name": "autograder",
+   "manifestFile": "lake-manifest.json",
+   "inputRev": "master",
+   "inherited": false,
+   "configFile": "lakefile.lean"}],
+ "name": "LeanPuzzles",
+ "lakeDir": ".lake"}
