@@ -94,7 +94,7 @@ def aexp_2_plus_z_plus_3 := add (num 2) (add (var "z") (num 3))
 
 -- Substitution -----------------------------------------------
 
-def subst (x : Vname) (xa : Aexp) (a : Aexp) : Aexp :=
+def subst (x : Vname) (xa : Aexp) (a : Aexp) : Aexp := -- replace x with xa in a
   match a with
   | num n => num n
   | var y => if x = y then xa else var y
@@ -157,8 +157,8 @@ theorem subst_bval : ∀ {x xa b}, bval (bsubst x xa b) s = bval b (s [x := aval
   intros x xa b
   induction b
   case Bc v       => simp_all [bsubst, bval]
-  case Bnot b' ih => simp_all [bsubst, bval, ih]
-  case Band b1 b2 ih1 ih2 => simp_all [bsubst, bval, ih1, ih2]
+  case Bnot b' ih => simp_all [bsubst, bval]
+  case Band b1 b2 ih1 ih2 => simp_all [bsubst, bval]
   case BLess a1 a2 => simp_all [bsubst, bval, subst_aval]
 
 -- Commands ----------------------------------------------------------
@@ -208,7 +208,7 @@ inductive BigStep : Com -> State -> State -> Prop where
                 bval b st = true -> BigStep c st st' -> BigStep (While b c) st' st'' ->
                 BigStep (While b c) st st''
 
-notation:12 "⟨" c "," s "⟩ ==> " t  => BigStep c s t
+notation:12 "⟨" c "," s "⟩" "==>" t  => BigStep c s t
 
 -----------------------------------------------------------------------------
 -- Floyd-Hoare Logic
@@ -235,7 +235,7 @@ inductive FH : Assertion -> Com -> Assertion -> Prop where
                           FH p (c1 ;; c2) r
 
   | If                : ∀ {p b c1 c2 q},
-                        FH (fun s => p s /\   bval b s) c1 q -> FH (fun s => p s /\ ¬ bval b s) c2 q ->
+                        FH (fun s => p s /\ bval b s) c1 q -> FH (fun s => p s /\ ¬ bval b s) c2 q ->
                         FH p (If b c1 c2) q
 
   | While             : ∀ {p b c},
@@ -294,14 +294,19 @@ theorem conseq_r_valid : ∀ { p q q' : Assertion} {c : Com},
 /- Here is a proof that our rule for `Skip` is `Valid` -/
 -- @[autogradedProof 5]
 theorem skip_valid : ∀ {p}, ⊧ {{ p }} Skip {{ p }} := by
-  sorry
+  intros p s t ps s_s_t
+  cases s_s_t; assumption
 
 /- Prove that our rule for `Assign` is `Valid` -/
 
 -- @[autogradedProof 15]
 theorem seq_valid : ∀ {p q r c1 c2},
   (⊧ {{p}} c1 {{q}}) -> ( ⊧ {{q}} c2 {{r}}) -> ( ⊧ {{p}} c1 ;; c2 {{ r }}) := by
-  sorry
+  intros p q r c1 c2 p_c1_q q_c2_r s t ps s_t
+  cases s_t
+  apply q_c2_r
+  apply p_c1_q
+  repeat assumption
 
 /- Prove that our rule for `If` is `Valid` -/
 -- @[autogradedProof 15]
@@ -309,8 +314,10 @@ theorem if_valid : ∀ {b c1 c2 p q},
   ( ⊧ {{ λs => p s /\ bval b s }} c1 {{ q }}) ->
   ( ⊧ {{ λs => p s /\ ¬ bval b s }} c2 {{ q }}) ->
   ( ⊧ {{ p }} If b c1 c2 {{ q }}) := by
-  sorry
-
+  intros b c1 c2 p q p_c1_q p_c2_q s t ps s_t
+  cases s_t
+  case IfTrue b_true c1_s_t => apply p_c1_q; trivial; assumption
+  case IfFalse b_false c2_s_t => apply p_c2_q; simp_all []; trivial; assumption
 
 /- Complete the proof that the `inv` holds no matter how many times you spin around the loop -/
 -- @[autogradedProof 15]
@@ -322,7 +329,12 @@ theorem loop_inv {inv s t } :
   := by
   intros c_inv w_s_t inv_s
   generalize bob : (WHILE b DO c END) = wbc at w_s_t
-  sorry
+  induction w_s_t <;> simp_all []
+  case WhileTrue b_true c_s_t while_s ih1 ih2 =>
+    apply ih2
+    simp_all [Legit]
+    apply c_inv <;> assumption
+
 
 -- The following says that upon exit, the loop-condition `b` is false
 theorem loop_exit {b c s t} : (⟨ While b c, s ⟩ ==> t) -> bval b t = false := by
@@ -335,12 +347,33 @@ theorem loop_exit {b c s t} : (⟨ While b c, s ⟩ ==> t) -> bval b t = false :
 theorem while_valid : ∀ {b c inv},
   ( ⊧ {{ λ s => inv s /\ bval b s }} c {{ inv }} ) ->
   ( ⊧ {{ inv }} While b c {{ λ s => inv s /\ ¬ bval b s }} ) := by
-  sorry
+  intros b c inv c_inv s t inv_s s_t
+  constructor
+  . case left => apply loop_inv <;> assumption
+  . case right => simp_all []; apply loop_exit <;> assumption
+
+@[simp]
+theorem assign_step : ∀ {x a s t},
+  (⟨ x <~ a, s ⟩ ==> t) ↔ (t = (s [x := aval a s])) := by
+  intros x a s t
+  -- constructor
+  apply Iff.intro
+  . case mp => intros x_a_s_t; cases x_a_s_t; trivial
+  . case mpr => intros t_eq; subst t; constructor
 
 -- Use all the above theorems to prove the soundness of Floyd-Hoare Logic
 -- @[autogradedProof 10]
 theorem fh_sound : ∀ {p c q}, (⊢ {{ p }} c {{ q }}) -> ( ⊧ {{ p }} c {{ q }}) := by
-  sorry
+  intros p c q p_c_q s t
+  induction p_c_q generalizing s t
+  . case Skip => apply skip_valid
+  . case Assign => simp_all []
+  . case Seq => apply seq_valid <;> assumption
+  . case If => apply if_valid <;> assumption
+  . case While => apply while_valid; assumption
+  . case CnsL => apply conseq_l_valid <;> assumption
+  . case CnsR => apply conseq_r_valid <;> assumption
+
 
 /- ------------------------------------------------------------------------------------------------
 ## Problem 2: Soundness of Verification Condition Generation
@@ -394,25 +427,71 @@ theorem simp_if_false : ∀ {b : Bool} { x y : Prop }, ((if b then x else y) /\ 
 
 theorem foo_true : ∀ { b : Bexp } { p1 p2 : Assertion},
   (λ s => (if bval b s = true then p1 s else p2 s) ∧ bval b s = true) ⊆ p1
-  := by simp [Implies]; intros; simp_all []
+  := by simp []; intros; simp_all []
 
 theorem foo_false : ∀ { b : Bexp } { p1 p2 : Assertion},
   (λ s => (if bval b s = true then p1 s else p2 s) ∧ ¬ bval b s = true) ⊆ p2
-  := by simp [Implies]; intros; simp_all []
+  := by simp []; intros; simp_all []
 
 /- Complete the following lemma relating `vc` and `pre`.
    HINT: Do the proof is "by induction" on the `c`.
 -/
 
+theorem state_true : ∀ { b : Bexp } { p: Assertion },
+  (∀ s, bval b s = true -> p s) -> ((λ s => bval b s = true) ⊆ p) := by
+  simp []
+
 -- @[autogradedProof 25]
 theorem vc_pre : ∀ {c q}, vc c q -> (⊢ {{ pre c q }} (erase c) {{ q }}) := by
-  sorry
+  intros c q vc_c_q
+  induction c generalizing q
+  . case Skip => constructor
+  . case Assign x a => constructor
+  . case Seq c1 c2 ih1 ih2 =>
+    simp_all []
+    cases vc_c_q <;> constructor
+    apply ih1
+    assumption
+    apply ih2
+    assumption
+  . case If b c1 c2 ih1 ih2 =>
+    simp_all []
+    cases vc_c_q
+    constructor <;> apply FH.CnsL
+    apply ih1; assumption
+    apply foo_true
+    apply ih2; assumption
+    apply foo_false
+  . case While i b ih =>
+    simp_all []
+    cases vc_c_q
+    apply FH.CnsR
+    constructor
+    apply FH.CnsL
+    apply ih
+    simp_all []
+    rename_i left right
+    unfold Implies
+    intros; apply left; simp_all []; simp_all []
+    rename_i left right
+    unfold Implies
+    intros c1 c2
+    simp_all []
+
+
+---
+-- ∀ {p b c},
+--    FH (fun s => p s /\ bval b s) c p ->
+--    FH p (While b c) (fun s => p s /\ ¬ bval b s)
 
 -- Use `fh_sound` and `vc_pre` to prove that `vc` is "sound"
 
 -- @[autogradedProof 5]
 theorem vc_sound : ∀ {c q}, vc c q -> (⊧ {{ pre c q }} erase c {{ q }}) := by
-  sorry
+  intros c q vc_c_q
+  apply fh_sound
+  apply vc_pre
+  assumption
 
 
 --  Lets extend `vc` to check triples `{p} c {q}`, by generating a `vc' p c q` defined
@@ -422,7 +501,15 @@ def vc' (p : Assertion) (c : ACom) (q : Assertion) := (p ⊆ pre c q) /\ vc c q
 -- Prove that `vc'` is sound, i.e. that `vc' p c q` implies `{p} c {q}` is legit
 -- @[autogradedProof 10]
 theorem vc'_sound : ∀ {p c q}, (vc' p c q) -> (⊧{{ p }} erase c {{ q }}) := by
-  sorry
+  intros p c q vc'_p_c_q
+  apply fh_sound
+  simp_all [vc']
+  cases vc'_p_c_q
+  constructor
+  apply vc_pre
+  assumption
+  unfold Implies
+  assumption
 
 /- -----------------------------------------------------------------------------------------------
 ## Problem 3: Loop Invariants
@@ -434,13 +521,12 @@ namespace Problem3
 notation:10 x "<~" e  => ACom.Assign x (ToAexp.toAexp e)
 infixr:20 ";;"  => ACom.Seq
 notation:10 "IF" b "THEN" c1 "ELSE" c2 => ACom.If b c1 c2
-notation:12 "WHILE {-@" inv "@-}" b "DO" c "END" => ACom.While inv (ToBexp.toBexp b) c
+notation:12 "WHILE" "{-@" inv "@-}" b "DO" c "END" => ACom.While inv (ToBexp.toBexp b) c
 notation:20 "[|" c "|]" => erase c
 notation:10 "⊢" " {|" p "|}" c "{|" q "|}" => FH p (erase c) q
 notation:10 "⊧" " {|" p "|}" c "{|" q "|}" => (⊧ {{p}} (erase c) {{q}})
 
-def inv_3_1 : Assertion := λ (s: State) =>
-  sorry
+def inv_3_1 : Assertion := λ (s: State) => s x + s y = s z
 
 theorem foo : ∀ {x y : Nat}, 0 < x -> x - 1 + (y + 1) = x + y := by
   omega
@@ -456,13 +542,20 @@ theorem ex_3_1 :
       END)
     {| λs => s y = s z |}
   := by
-  apply vc'_sound; simp_all [aval,upd,bval, inv_3_1]
-  constructor <;> repeat constructor
-  sorry
-  sorry
+  apply vc'_sound; simp_all [aval, upd, bval, inv_3_1]
+  constructor
+  . case a.left => intros; simp_all [foo]
+  . case a.right => intros; simp_all []
+
+def rec_sum (n : Nat) : Nat :=
+  match n with
+  | 0 => 0
+  | n' + 1 => n + rec_sum n'
 
 def inv_sum : Assertion := λ (s: State) =>
-  sorry
+  s z = rec_sum (s y - 1) ∧ s y <= s x ∧ s x = 10
+
+  -- s z = s y * (s y - 1) / 2
 
 -- @[autogradedProof 40]
 theorem ex_sum :
@@ -475,7 +568,22 @@ theorem ex_sum :
      END)
     {| λ s => s z == 45 |}
   := by
-  apply vc'_sound; simp_all [aval,upd, bval, inv_sum]
-  constructor <;> repeat constructor
-  sorry
-  sorry
+  apply vc'_sound; simp_all [aval, upd, bval, inv_sum]
+  constructor
+  . case a.left => simp [rec_sum]
+  . case a.right =>
+    constructor
+    . case left =>
+      intros s sz y_x x_10 y;
+      simp_all +arith []
+      cases hy: s "y"
+      . case zero => trivial
+      . case succ n =>
+        simp [rec_sum, Nat.add_comm]
+        have h : Nat.succ n < 10 := by rw[<-hy]; apply y
+        omega
+    . case right =>
+      intros s sz y_x x_10 y;
+      simp_all []
+      rw [Nat.le_antisymm y_x y]
+      simp_all [rec_sum]

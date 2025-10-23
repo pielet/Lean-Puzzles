@@ -89,12 +89,6 @@ def mkVar (s: String) (i : Nat) : Exp := var (s!"{s}_{i}")
 
 notation:80 lhs:91 "#" rhs:90 => mkVar lhs rhs
 
-
-
-
-
-
-
 /------------------------------------------------------------------------
 ## Commands
 We now use the same `Exp` for assignments *and* for conditions; so now
@@ -197,19 +191,59 @@ notation:12 cs "~~>" cs' => SmallStep cs cs'
 theorem evalop_deterministic: ∀ {o va vb v1 v2},
   EvalOp o va vb v1 -> EvalOp o va vb v2 -> v1 = v2
   := by
-  sorry
+  intros o va vb v1 v2 ev1 ev2
+  cases ev1 <;> cases ev2 <;> simp_all
 
 -- @[autogradedProof 15]
 theorem eval_deterministic: ∀ {s e v1 v2},
   (⟨s, e⟩ ==> v1) -> (⟨ s, e ⟩ ==> v2) -> v1 = v2
   := by
-  sorry
+  intros s e v1 v2 ev1 ev2
+  cases ev1 <;> cases ev2
+  simp_all
+  simp_all
+  simp_all
+  rename_i o e1 e2 v1' v2' ev1 ev2 evo v1'' v2'' ev1' ev2' evo'
+  have v1_eq : v1' = v1'' := eval_deterministic ev1 ev1'
+  have v2_eq : v2' = v2'' := eval_deterministic ev2 ev2'
+  apply evalop_deterministic
+  assumption
+  cases evo <;> simp_all
 
 -- @[autogradedProof 20]
 theorem smallstep_deterministic: ∀ {cs cs1 cs2},
   (cs ~~> cs1) -> (cs ~~> cs2) -> cs1 = cs2
   := by
-  sorry
+  intros cs cs1 cs2 step1 step2
+  induction step1 generalizing cs2
+  . case Assign =>
+    cases step2
+    rename_i x e s v s1 v' s2
+    have v_eq : v = v' := by apply eval_deterministic; repeat assumption
+    simp_all
+  . case Seq1 =>
+    cases step2
+    trivial
+    contradiction
+  . case Seq2 c1 c1' c2 s s' step1 ih =>
+    cases step2
+    contradiction
+    rename_i c1'' s'' _
+    have f00 : (c1', s') = (c1'', s'') := by apply ih; assumption
+    simp_all
+  . case IfTrue =>
+    cases step2
+    trivial
+    have cond : VBool true = VBool false := by apply eval_deterministic; repeat assumption
+    cases cond
+  . case IfFalse =>
+    cases step2
+    have cond : VBool false = VBool true := by apply eval_deterministic; repeat assumption
+    cases cond
+    trivial
+  . case While =>
+    cases step2
+    trivial
 
 /- -------------------------------------------------------------------------------------------------
 ## Problem 2. Type Soundness
@@ -227,6 +261,12 @@ def type_of (v: Val) : Ty :=
   match v with
   | VNat _ => TNat
   | VBool _ => TBool
+
+theorem type_of_sound : ∀ {v}, type_of v = TBool ↔ ∃ b, v = VBool b
+  := by
+  intros v; constructor
+  . case mp => intros ty; cases v <;> simp_all [type_of]
+  . case mpr => intros b_val; cases b_val; simp_all [type_of]
 
 abbrev Env := Var -> Ty
 
@@ -248,11 +288,21 @@ notation:10 Γ " ⊧ " s  => Wf Γ s
    the `expXXX_is_TTT` theorems below should **automatically** be checked.
 -/
 
-inductive OpTy : Op -> Ty -> Ty -> Ty -> Prop
+inductive OpTy : Op -> Ty -> Ty -> Ty -> Prop where
+  | add : OpTy Op.Add TNat TNat TNat
+  | sub : OpTy Op.Sub TNat TNat TNat
+  | and : OpTy Op.And TBool TBool TBool
+  | or  : OpTy Op.Or  TBool TBool TBool
+  | less: OpTy Op.Less TNat TNat TBool
 
 -- The relation `ExpTy Γ e t` says that `e` **has type** `t` in environment `Γ`
 
 inductive  ExpTy : Env -> Exp -> Ty -> Prop where
+  | num : ∀ {Γ n}, ExpTy Γ (num n) TNat
+  | bool : ∀ {Γ b}, ExpTy Γ (bool b) TBool
+  | var : ∀ {Γ x t}, Γ x = t -> ExpTy Γ (var x) t
+  | bin : ∀ {Γ e1 e2 o t1 t2 t},
+           ExpTy Γ e1 t1 -> ExpTy Γ e2 t2 -> OpTy o t1 t2 t -> ExpTy Γ (bin o e1 e2) t
 
 notation:10 Γ " ⊢ " e " : " τ => ExpTy Γ e τ
 
@@ -260,7 +310,6 @@ notation:10 Γ " ⊢ " e " : " τ => ExpTy Γ e τ
 @[simp] def y := "y"
 @[simp] def z := "z"
 @[simp] def b := "?b"
-
 
 def exp0 : Exp := x#1 + y#1 + z#1 + 5
 def exp1 : Exp := x + y
@@ -292,18 +341,31 @@ theorem exp3_is_bool : Γ₀ ⊢ exp3 : TBool := by
 ### Preservation
 ------------------------------------------------------------ -/
 
-
 -- @[autogradedProof 15]
 theorem op_preservation : ∀ {o t1 t2 t v1 v2},
   OpTy o t1 t2 t -> type_of v1 = t1 -> type_of v2 = t2 -> EvalOp o v1 v2 v -> type_of v = t
   := by
-  sorry
+  intros o t1 t2 t v1 v2 op ty1 ty2 ev
+  cases op <;> cases ev <;> simp_all [type_of]
 
 -- @[autogradedProof 20]
 theorem exp_preservation : ∀ {Γ e t s v},
   (Γ ⊧ s) -> (Γ ⊢ e : t) -> (⟨ s , e ⟩ ==> v) -> type_of v = t
   := by
-  sorry
+  intros Γ e t s v wf ty ev
+  induction ev generalizing Γ t
+  . case Num => cases ty; simp_all [type_of]
+  . case Bool => cases ty; simp_all [type_of]
+  . case Var => cases ty; simp_all [Wf]
+  . case Bin op e1 e2 v1 v2 v' ev1 ev2 eval_op ih1 ih2 =>
+    cases ty
+    rename_i t1 t2 et1 et2 opt
+    apply op_preservation
+    assumption
+    apply ih1; assumption
+    assumption
+    apply ih2; assumption
+    repeat assumption
 
 /- ------------------------------------------------------------
 ### Progress
@@ -327,13 +389,47 @@ theorem bool_val : ∀ {v}, type_of v = TBool <-> (∃b, v = VBool b)
 theorem op_progress : ∀ {o t1 t2 t v1 v2},
   OpTy o t1 t2 t -> type_of v1 = t1 -> type_of v2 = t2 -> ∃ v, EvalOp o v1 v2 v
   := by
-  sorry
+  intros o t1 t2 t v1 v2 op ty1 ty2
+  induction op generalizing v1 v2
+  . case add =>
+    simp_all [nat_val]
+    cases ty1; cases ty2
+    simp_all
+    repeat constructor
+  . case sub =>
+    simp_all [nat_val]
+    cases ty1; cases ty2
+    simp_all
+    repeat constructor
+  . case and =>
+    simp_all [bool_val]
+    cases ty1 <;> cases ty2 <;> simp_all <;> repeat constructor
+  . case or =>
+    simp_all [bool_val]
+    cases ty1 <;> cases ty2 <;> simp_all <;> repeat constructor
+  . case less =>
+    simp_all [nat_val]
+    cases ty1; cases ty2 <;> simp_all <;> constructor <;> constructor
 
 -- @[autogradedProof 20]
 theorem exp_progress : ∀ {Γ e t s},
   (Γ ⊧ s) -> (Γ ⊢ e : t) -> (∃ v, ⟨ s, e ⟩ ==> v)
   := by
-  sorry
+  intros Γ e t s wf ty
+  induction ty generalizing s
+  . case num => repeat constructor
+  . case bool => repeat constructor
+  . case var => repeat constructor
+  . case bin e1 e2 op t1 t2 t' ty1 ty2 opty ih1 ih2 =>
+    obtain ⟨ v1, _ ⟩ : ∃ v, ⟨ s, e1 ⟩ ==> v := by apply ih1; assumption
+    obtain ⟨ v2, _ ⟩ : ∃ v, ⟨ s, e2 ⟩ ==> v := by apply ih2; assumption
+    have v1_t1 : type_of (v1) = t1 := by apply exp_preservation; repeat assumption
+    have v2_t2 : type_of (v2) = t2 := by apply exp_preservation; repeat assumption
+    have fact : ∃ v, EvalOp op v1 v2 v := by apply op_progress; repeat assumption
+    cases fact
+    constructor
+    constructor
+    repeat assumption
 
 /- ------------------------------------------------------------
 ### Soundness = Preservation + Progress
@@ -356,6 +452,18 @@ theorem exp_sound : ∀ {Γ e t s},
 ## Problem 3. Implement a Type Checker
 ------------------------------------------------------------------------------------------------- -/
 
+/-
+In summery:
+- `checkOp` checks if an operator `o` can be applied to two types `t1` and `t2`
+  and returns the resulting type if it can, or `none` if it cannot.
+- `checkExp` checks if an expression `e` has a type in the environment `Γ`
+  and returns the type if it can, or `none` if it cannot.
+- `checkTy` checks if an expression `e` has a type `t` in the environment `Γ`
+  and returns `true` if it does, or `false` if it does not.
+- `checkCom` checks if a command `c` is well-typed in the environment `Γ`
+  and returns `true` if it is, or `false` if it is not.
+-/
+
 def checkOp (o: Op) (t1 t2 : Ty) : Option Ty :=
   match o, t1, t2 with
   | Op.Add , Ty.TNat , Ty.TNat  => some TNat
@@ -377,7 +485,14 @@ theorem checkOp_sound : ∀ {o t1 t2 t},
 
 -- @[autogradedProof 20]
 def checkExp (Γ : Env) (e: Exp) : Option Ty :=
-  sorry
+  match e with
+  | num _ => some TNat
+  | Exp.bool _ => some TBool
+  | var x => some (Γ x)
+  | bin o e1 e2 =>
+    match checkExp Γ e1, checkExp Γ e2 with
+    | some t1, some t2 => checkOp o t1 t2
+    | _, _ => none
 
 -- @[autogradedProof 5]
 theorem checkExp0 : checkExp Γ₀ exp0 = some TNat  := by rfl
@@ -397,8 +512,23 @@ theorem checkExp3 : checkExp Γ₀ exp3 = some TBool := by rfl
 theorem checkExp_sound : ∀ {Γ e t},
   checkExp Γ e = some t -> (Γ ⊢ e : t)
   := by
-  sorry
-
+  intros Γ e t
+  induction e generalizing t
+  . case num n =>
+    intros h; simp_all [checkExp]; simp_all [<-h]; constructor
+  . case bool b =>
+    intros h; simp_all [checkExp]; simp_all [<-h]; constructor
+  . case var x =>
+    intros h; simp_all [checkExp]; simp_all [<-h]; constructor; trivial
+  . case bin o e1 e2 ih1 ih2 =>
+    intros h
+    cases h1 : (checkExp Γ e1) <;> cases h2 : (checkExp Γ e2) <;> simp_all [checkExp]
+    . case some.some t1 t2 =>
+      constructor
+      assumption
+      assumption
+      apply checkOp_sound
+      assumption
 
 def eqTy (t1 t2 : Ty) : Bool :=
   match t1, t2 with
@@ -445,7 +575,18 @@ theorem checkTy_sound : ∀ {Γ e t},
 -- The relation `ComTy Γ c` says that `c` **is well-typed** in environment `Γ`
 -- Fill in the rules for `ComTy`; when you are done, theorem `com0_ok` should automatically verify.
 
-inductive  ComTy : Env -> Com -> Prop where
+inductive ComTy : Env -> Com -> Prop where
+  | Skip : ∀ {Γ}, ComTy Γ Skip
+  | Assign : ∀ {Γ x e},
+              checkTy Γ e (Γ x) -> ComTy Γ (x <~ e)
+  | Seq : ∀ {Γ c1 c2},
+            ComTy Γ c1 -> ComTy Γ c2 -> ComTy Γ (c1 ;; c2)
+  | If : ∀ {Γ b c1 c2},
+                  checkTy Γ b TBool -> ComTy Γ c1 -> ComTy Γ c2 ->
+                  ComTy Γ (IF b THEN c1 ELSE c2)
+  | While : ∀ {Γ b c},
+              checkTy Γ b TBool -> ComTy Γ c ->
+              ComTy Γ (WHILE b DO c END)
 
 notation:10 Γ " ⊢ " c  => ComTy Γ c
 
@@ -454,28 +595,59 @@ def com0 : Com :=
   (WHILE exp3 DO z <~ z + 10 END)
 
 -- @[autogradedProof 30]
-theorem com0_ok : Γ₀ ⊢ com0 := by
-  repeat constructor
+theorem com0_ok : Γ₀ ⊢ com0 := by repeat constructor
 
 -- @[autogradedProof 30]
 theorem com_preservation_c : ∀ {Γ c s c' s'},
   (Γ ⊧ s) -> (Γ ⊢ c) -> ((c, s) ~~> (c', s')) -> (Γ ⊢ c')
   := by
-  sorry
+  intros Γ c s c' s' wf ty step
+  induction ty generalizing c' s s' <;> cases step <;> repeat trivial
+  . case Assign.Assign => constructor
+  . case Seq.Seq2 => rename_i ih _ _ _; constructor; apply ih; repeat assumption
+  . case While.While => repeat (constructor <;> repeat trivial)
 
 -- @[autogradedProof 30]
 theorem com_preservation_s : ∀ {Γ c s c' s'},
   (Γ ⊧ s) -> (Γ ⊢ c) -> ((c, s) ~~> (c', s')) -> (Γ ⊧ s')
   := by
-  sorry
+  intros Γ c s c' s' wf ty step
+  induction ty generalizing c' s s' <;> cases step <;> repeat trivial
+  . case Assign.Assign x e ct v ev =>
+    simp_all [Wf, upd]
+    intros x'
+    by_cases x_x' : x' = x
+    . case pos =>
+      simp_all []
+      have v_t : type_of v = type_of (s x) := by
+        apply exp_preservation
+        assumption
+        apply checkTy_sound
+        repeat assumption
+      simp_all []
+    . case neg => simp_all []
+  . case Seq.Seq2 => rename_i ih1 _ _ _; apply ih1; repeat trivial
 
+-- theorem exp_preservation : ∀ {Γ e t s v},
+--   (Γ ⊧ s) -> (Γ ⊢ e : t) -> (⟨ s , e ⟩ ==> v) -> type_of v = t
+-- theorem exp_progress : ∀ {Γ e t s},
+--   (Γ ⊧ s) -> (Γ ⊢ e : t) -> (∃ v, ⟨ s, e ⟩ ==> v)
+-- theorem exp_sound : ∀ {Γ e t s},
+--   (Γ ⊧ s) -> (Γ ⊢ e : t) -> (∃ v, (⟨ s, e ⟩ ==> v) /\ type_of v = t)
 
 -- HINT: use `exp_preservation` and `exp_progress`
 -- @[autogradedProof 30]
 theorem eval_bool : ∀ { Γ e s },
-  (Γ ⊧ s) -> (Γ ⊢ e : TBool) -> (∃ v, ⟨ s , e ⟩ ==> VBool v)
+  (Γ ⊧ s) -> (Γ ⊢ e : TBool) -> (∃ b, ⟨ s , e ⟩ ==> VBool b)
   := by
-  sorry
+  intros Γ e s wf ty
+  obtain ⟨ v, ev ⟩ : ∃ v, ⟨ s , e ⟩ ==> v := by apply exp_progress; repeat assumption
+  obtain ⟨ b, vt ⟩ : ∃ b, v = VBool b := by
+    have v_t : type_of v = TBool := by apply exp_preservation; repeat assumption
+    simp_all [type_of_sound]
+  constructor
+  rw [vt] at ev
+  assumption
 
 -- HINT: in the `c1;;c2` case you may need to a `by_cases c1_skip : c1 = Skip` (i.e. to split cases on whether `c1` is `Skip`).
 -- HINT: in the `if e c1 c2` case use `eval_bool` to deduce the `Eval s e (VBool b)` and the do a `cases b` to apply SmallStep.IfFalse or SmallStep.IfTrue
@@ -483,13 +655,52 @@ theorem eval_bool : ∀ { Γ e s },
 theorem com_progress: ∀ {Γ c s},
   (Γ ⊧ s) -> (Γ ⊢ c) -> ¬ (c = Skip) -> (∃ cs', (c, s) ~~> cs')
   := by
-  sorry
+  intros Γ c s wf ty not_skip
+  induction ty
+  . case Skip => simp_all
+  . case Assign x e _ =>
+    obtain ⟨ v, ev ⟩ : ∃ v, Eval s e v := by
+      apply exp_progress; assumption; apply checkExp_sound; simp_all [checkTy_t]; trivial
+    -- another way to put this:
+    -- have ex :  Γ ⊢ e : Γ x := by apply checkExp_sound; simp_all [checkTy_t]
+    -- cases (exp_progress wf ex) <;>
+    constructor
+    constructor
+    assumption
+  . case Seq c1 c2 _ _ ih _ =>
+    by_cases c1_skip : c1 = Skip
+    . case pos => simp_all []; repeat constructor
+    . case neg =>
+      obtain ⟨ cs', step1 ⟩ : ∃ cs', (c1, s) ~~> cs' := by apply ih; assumption
+      constructor
+      constructor
+      assumption
+  . case If be c1 c2 _ _ _ _ _ =>
+    obtain ⟨ b, be ⟩ : ∃ b, ⟨ s , be ⟩ ==> VBool b := by apply eval_bool; assumption; apply checkTy_sound; assumption
+    cases b
+    . case false => constructor; apply SmallStep.IfFalse; assumption
+    . case true => constructor; apply SmallStep.IfTrue; assumption
+  . case While => repeat constructor
 
 -- Fill in the definition of `checkCom` which is a *function* that can be run on a `Com` to check if it is well-typed.
 
 -- @[autogradedProof 30]
 def checkCom (Γ : Env) (c: Com) : Bool :=
-  sorry
+  match c with
+  | Skip => true
+  | Assign x e =>
+      match checkExp Γ e with
+      | some t =>
+          match Γ x with
+          | t' => if eqTy t t' then true else false
+      | none => false
+  | Com.Seq c1 c2 =>
+      if checkCom Γ c1 && checkCom Γ c2 then true else false
+  | If b c1 c2 =>
+      if checkTy Γ b TBool && checkCom Γ c1 && checkCom Γ c2 then true else false
+  | While b c =>
+      if checkTy Γ b TBool && checkCom Γ c then true else false
+
 
 -- When you are done the below should automatically verify
 theorem checkCom0 : checkCom Γ₀ com0 = true := by rfl
@@ -499,4 +710,24 @@ theorem checkCom0 : checkCom Γ₀ com0 = true := by rfl
 theorem checkCom_sound : ∀ {Γ c},
   checkCom Γ c -> (Γ ⊢ c)
   := by
-  sorry
+  intros Γ c
+  induction c generalizing Γ <;> intro com <;> simp_all [checkCom]
+  . case Skip => constructor
+  . case Assign v e =>
+    constructor
+    cases he : (checkExp Γ e)
+    . case a.none => rw [he] at com; contradiction
+    . case a.some t => rw [he] at com; simp_all [checkTy_t]
+  . case Seq ih1 ih2 =>
+    constructor <;> cases com
+    apply ih1; assumption
+    apply ih2; assumption
+  . case If ih1 ih2 =>
+    constructor <;> cases com <;> rename_i l _ <;> cases l
+    assumption
+    apply ih1; assumption
+    apply ih2; assumption
+  . case While ih =>
+    constructor <;> cases com
+    assumption
+    apply ih; assumption

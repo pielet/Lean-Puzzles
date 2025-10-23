@@ -1,6 +1,6 @@
 # Lean Puzzles
 
-This is a collection of lean puzzles that takes steps to precisely formalize and verify your intuitions about languages and their semantics.
+This is a collection of lean puzzles that take steps to precisely formalize and verify your intuitions about languages and their semantics.
 
 Complete definitions and proofs that are currently filled with `sorry`.
 
@@ -26,7 +26,7 @@ make turnin
 Checkout to `sol` branch to verify your solutions.
 
 
-## References
+## Reference
 See [Principles of Programming Languages](https://ucsd-cse230.github.io/wi25/) from Prof. Ranjit for lecture details.
 
 Have fun proving!

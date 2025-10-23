@@ -103,7 +103,6 @@ theorem Path_trans : ∀ {a: Type} {r: Rel a} {x y z: a},
                   assumption
                   simp_all []
 
-
 -- | Right-Paths ... are paths that are extended "on the right"
 inductive RPath {a: Type} (r: Rel a) : a -> a -> Prop where
   | rrefl : (x: a) -> RPath r x x
@@ -127,30 +126,58 @@ inductive RPath {a: Type} (r: Rel a) : a -> a -> Prop where
 
 -- @[autogradedProof 10]
 theorem step_is_path : ∀ {a: Type} {r: Rel a} {x y: a}, r x y -> Path r x y := by
-  sorry
+  intros a r x y r_xy
+  have r_yy : Path r y y := by apply Path.refl
+  solve_by_elim
+
 
 -- | Prove that a single link makes a Right-Path ---------------------------------------------
 
 -- @[autogradedProof 10]
 theorem rstep_is_path : ∀ {a: Type} {r: Rel a} {x y: a}, r x y -> RPath r x y := by
-  sorry
+  intros a r x y r_xy
+  have r_yy : RPath r y y := by apply RPath.rrefl
+  solve_by_elim
 
 -- | Prove that right-paths are transitive  --------------------------------------------------
 
 -- @[autogradedProof 20]
 theorem RPath_trans : ∀ {a: Type} {r: Rel a} { x y z: a }, RPath r x y -> RPath r y z -> RPath r x z := by
-  sorry
+  intros a r x y z p1 p2
+  induction p2
+  case rrefl => assumption
+  case rstep ih =>
+    constructor
+    repeat assumption
 
 -- | Prove that `Path` and `RPath` are "equivalent" ------------------------------------------
 
 -- @[autogradedProof 15]
 theorem RPath_Path : ∀ {a: Type} {r: Rel a} { x y: a }, Path r x y -> RPath r x y := by
-  sorry
+  intros a r x y p
+  induction p
+  case refl => constructor
+  case step =>
+    rename_i x y z r_xy p_yz rp_yz
+    have rp_xy : RPath r x y := by
+      apply rstep_is_path
+      apply r_xy
+    apply RPath_trans
+    repeat assumption
+
 
 -- @[autogradedProof 15]
 theorem Path_RPath : ∀ {a: Type} { r: Rel a } {x y: a}, RPath r x y -> Path r x y := by
-  sorry
-
+  intros a r x y p
+  induction p
+  case rrefl => constructor
+  case rstep =>
+    rename_i z w rp_xz r_zw p_xz
+    have p_zw : Path r z w  := by
+      apply step_is_path
+      apply r_zw
+    apply Path_trans
+    repeat assumption
 
 -------------------------------------------------------------------------------
 -- | Q2 : Equivalence of evaluators
@@ -193,11 +220,36 @@ inductive LvRel : State -> LExp -> Val -> Prop where
 
 -- @[autogradedProof 15]
 theorem LvRel_lval: ∀ {s: State} {e: LExp} {n: Val}, LvRel s e n -> lval e s = n := by
-  sorry
-
+  intros s e n p
+  induction p with
+  | lvRelN => rfl
+  | lvRelV => rfl
+  | lvRelP =>
+    rename_i e1 e2 n1 n2 p1 p2 ih1 ih2
+    simp_all [lval]
+  | lvRelL =>
+    rename_i x e1 e2 n1 n2 p1 p2 ih1 ih2
+    simp_all [lval]
 
 -- HINT: use induction ... generalizing
 
+-- LvRel s e1 n1 -> LvRel (s [x := n1]) e2 n2
+
 -- @[autogradedProof 25]
 theorem lval_LvRel: ∀ {s: State} {e: LExp} {n: Val}, lval e s = n -> LvRel s e n := by
-  sorry
+  intros s e n p
+  induction e generalizing s n
+  case num n' => simp_all [lval]; constructor
+  case var x => simp_all [lval, p.symm]; constructor
+  case plus e1 e2 ih1 ih2 =>
+    let n1 := lval e1 s
+    let n2 := lval e2 s
+    simp_all [lval, <-p]
+    constructor <;> simp_all []
+  case llet x e1 e2 ih1 ih2 =>
+    let n1 := lval e1 s
+    let n2 := lval e2 (s [x := n1])
+    simp_all [lval, <-p]
+    constructor
+    apply ih1
+    apply ih2
